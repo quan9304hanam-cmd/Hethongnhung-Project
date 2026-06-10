@@ -1,0 +1,15 @@
+# Hệ thống Phát hiện Cháy – Python dependencies
+# Cài đặt: pip install -r requirements.txt
+
+# AI / Computer Vision
+ultralytics>=8.0.0          # YOLOv8 (bao gồm PyTorch dependency)
+opencv-python>=4.8.0        # Xử lý ảnh, đọc camera, vẽ giao diện
+
+# Hardware
+pyserial>=3.5               # Giao tiếp Serial với ESP32
+
+# Networking / Alerts
+requests>=2.28.0            # Gửi thông báo Telegram
+
+# Số học
+numpy>=1.24.0               # Tính toán ma trận, xử lý mảng
