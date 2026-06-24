@@ -1,50 +1,46 @@
 """
-communication.py – Giao tiếp ESP32 & Cảnh báo Telegram
-═══════════════════════════════════════════════════════
+communication.py – Giao tiếp ESP32 (2 đèn Zone + 1 chuông báo cháy)
+══════════════════════════════════════════════════════════════════
 
-Lớp ESP32Controller:
-  • Giao thức Serial văn bản đơn giản (115200 baud, kết thúc bằng \\n)
-  • PC gửi  : "Z1:ON", "Z2:OFF", "ALL:OFF", "PING"
-  • ESP32 trả lời: "OK", "PONG", "READY", "ERR:..."
-  • Tự động reconnect nếu mất kết nối
+Giao thức Serial (115200 baud, ASCII, kết thúc '\\n'):
 
-Lớp TelegramAlerter:
-  • Gửi cảnh báo cháy thông thường (có cooldown)
-  • Gửi cảnh báo khẩn cấp (chỉ 1 lần / sự kiện cháy)
-  • Gửi thông báo đã dập tắt
+    PC gửi        │ ESP32 trả lời          │ Mô tả
+   ───────────────┼────────────────────────┼─────────────────────────────
+    PING          │ PONG                   │ Kiểm tra kết nối
+    Z1:ON / OFF   │ OK                     │ Đèn Zone 1 (chân X)
+    Z2:ON / OFF   │ OK                     │ Đèn Zone 2 (chân Y)
+    BUZZER:ON/OFF │ OK                     │ Chuông báo cháy
+    ALL:OFF       │ OK                     │ Tắt tất cả (2 đèn + chuông)
+    STATUS        │ Z1:0,Z2:1,BUZZER:1     │ Đọc trạng thái hiện tại
+
+ESP32 chỉ đóng vai trò "tay chân" – mọi logic quyết định BẬT/TẮT
+(kể cả độ trễ 5 giây) đều được Python (laptop) tính toán và gửi lệnh
+tường minh. Điều này giúp firmware ESP32 đơn giản, dễ debug.
 """
 
 import serial
-import time
 import threading
+import time
 import logging
-import requests
 import config
 
 logger = logging.getLogger(__name__)
 
 
-# ─── ESP32 Controller ─────────────────────────────────────────────────────────
-
 class ESP32Controller:
     """
-    Quản lý giao tiếp Serial với bộ điều khiển Relay ESP32.
-
-    Giao thức:
-        Z<n>:ON\\n   → Bật relay Zone n (n = 1-4)
-        Z<n>:OFF\\n  → Tắt relay Zone n
-        ALL:OFF\\n   → Tắt tất cả relay
-        PING\\n      → Kiểm tra kết nối (ESP32 trả "PONG")
-
-    Thread-safe: có thể gọi từ nhiều thread.
+    Quản lý giao tiếp Serial với ESP32 điều khiển 2 đèn Zone + 1 chuông.
+    Thread-safe, tự động chỉ gửi lệnh khi trạng thái THAY ĐỔI.
     """
 
     def __init__(self):
         self._ser: serial.Serial | None = None
-        self._lock  = threading.Lock()
-        # Trạng thái relay hiện tại theo góc nhìn của PC
-        self._zone_states: dict[int, bool] = {z: False for z in range(1, 5)}
+        self._lock = threading.Lock()
         self._connected = False
+
+        # Trạng thái relay theo góc nhìn của PC (cache để tránh gửi lệnh thừa)
+        self._zone_light_state: dict[int, bool] = {1: False, 2: False}
+        self._buzzer_state: bool = False
 
     # ── Kết nối / ngắt kết nối ──────────────────────────────────────────────
 
@@ -52,14 +48,10 @@ class ESP32Controller:
                 port: str      = config.ESP32_PORT,
                 baud: int      = config.ESP32_BAUD_RATE,
                 timeout: float = config.ESP32_TIMEOUT) -> bool:
-        """
-        Kết nối đến ESP32 qua cổng Serial.
-        Trả về True nếu thành công.
-        """
+        """Kết nối đến ESP32. Trả về True nếu thành công."""
         try:
             self._ser = serial.Serial(port, baud, timeout=timeout)
-            # Chờ ESP32 khởi động lại sau khi DTR pulse
-            time.sleep(2.5)
+            time.sleep(2.5)   # Chờ ESP32 reset xong sau khi mở cổng Serial
             self._ser.reset_input_buffer()
             self._connected = True
             logger.info(f"[ESP32] Kết nối thành công: {port} @ {baud}bps")
@@ -86,23 +78,18 @@ class ESP32Controller:
         return self._connected and self._ser is not None and self._ser.is_open
 
     def try_reconnect(self) -> bool:
-        """Thử kết nối lại 1 lần."""
         logger.warning("[ESP32] Đang thử kết nối lại…")
         self.disconnect()
         return self.connect()
 
-    # ── Gửi lệnh ────────────────────────────────────────────────────────────
+    # ── Gửi lệnh thô ─────────────────────────────────────────────────────────
 
     def _send(self, cmd: str) -> str | None:
-        """
-        Gửi lệnh và đọc 1 dòng phản hồi.
-        Trả về chuỗi phản hồi (đã strip) hoặc None nếu lỗi.
-        """
+        """Gửi 1 lệnh, đọc 1 dòng phản hồi. None nếu lỗi."""
         if not self.is_connected():
             return None
 
         line_bytes = (cmd.strip() + "\n").encode("ascii")
-
         with self._lock:
             try:
                 self._ser.write(line_bytes)
@@ -113,191 +100,81 @@ class ESP32Controller:
                 self._connected = False
                 return None
 
-    # ── API điều khiển relay ─────────────────────────────────────────────────
+    # ── API điều khiển ────────────────────────────────────────────────────────
 
-    def set_zone(self, zone: int, on: bool) -> bool:
+    def set_zone_light(self, zone: int, on: bool) -> bool:
         """
-        Bật/tắt relay của Zone.
-
-        Tham số
-        -------
-        zone : số thứ tự Zone (1-4)
-        on   : True = bật, False = tắt
-
-        Trả về True nếu ESP32 phản hồi "OK".
+        Bật/tắt đèn của Zone (1 hoặc 2).
+        Chỉ gửi lệnh thật khi trạng thái thay đổi so với lần trước.
         """
-        if not 1 <= zone <= 4:
+        if zone not in (1, 2):
             logger.warning(f"[ESP32] Zone không hợp lệ: {zone}")
             return False
 
-        state = "ON" if on else "OFF"
-        resp  = self._send(f"Z{zone}:{state}")
+        if self._zone_light_state[zone] == on:
+            return True   # Không có gì thay đổi – không cần gửi lệnh
+
+        cmd   = f"Z{zone}:{'ON' if on else 'OFF'}"
+        resp  = self._send(cmd)
 
         if resp and resp.startswith("OK"):
-            self._zone_states[zone] = on
-            logger.debug(f"[ESP32] Zone {zone} → {state}")
+            self._zone_light_state[zone] = on
+            logger.info(f"[ESP32] Đèn Zone {zone} → {'BẬT' if on else 'TẮT'}")
             return True
-        else:
-            logger.warning(f"[ESP32] set_zone({zone}, {on}): phản hồi không mong đợi: {resp!r}")
-            return False
+
+        logger.warning(f"[ESP32] set_zone_light({zone}, {on}) thất bại: {resp!r}")
+        return False
+
+    def set_buzzer(self, on: bool) -> bool:
+        """Bật/tắt chuông báo cháy. Chỉ gửi khi trạng thái thay đổi."""
+        if self._buzzer_state == on:
+            return True
+
+        cmd  = "BUZZER:ON" if on else "BUZZER:OFF"
+        resp = self._send(cmd)
+
+        if resp and resp.startswith("OK"):
+            self._buzzer_state = on
+            logger.info(f"[ESP32] Chuông báo cháy → {'BẬT' if on else 'TẮT'}")
+            return True
+
+        logger.warning(f"[ESP32] set_buzzer({on}) thất bại: {resp!r}")
+        return False
+
+    def sync(self, zone1_on: bool, zone2_on: bool, buzzer_on: bool) -> None:
+        """
+        Đồng bộ cả 3 relay trong 1 lần gọi – dùng trong vòng lặp main.py
+        mỗi frame. Tự động bỏ qua relay nào không có thay đổi.
+        """
+        ok1 = self.set_zone_light(1, zone1_on)
+        ok2 = self.set_zone_light(2, zone2_on)
+        ok3 = self.set_buzzer(buzzer_on)
+
+        if not (ok1 and ok2 and ok3) and not self.is_connected():
+            if self.try_reconnect():
+                # Gửi lại sau khi kết nối lại
+                self.set_zone_light(1, zone1_on)
+                self.set_zone_light(2, zone2_on)
+                self.set_buzzer(buzzer_on)
 
     def all_off(self) -> bool:
-        """Tắt tất cả relay trong một lệnh."""
+        """Tắt tất cả relay (2 đèn + chuông) trong 1 lệnh."""
         resp = self._send("ALL:OFF")
         if resp and resp.startswith("OK"):
-            for z in self._zone_states:
-                self._zone_states[z] = False
-            logger.info("[ESP32] ALL:OFF – tất cả relay đã tắt.")
+            self._zone_light_state = {1: False, 2: False}
+            self._buzzer_state = False
+            logger.info("[ESP32] ALL:OFF – đã tắt 2 đèn + chuông.")
             return True
         return False
 
-    def sync_zones(self, target_zones: set) -> None:
-        """
-        Đồng bộ trạng thái relay với tập hợp Zone cần BẬT.
-        Chỉ gửi lệnh cho các Zone có thay đổi, tránh giao tiếp thừa.
-
-        Tham số
-        -------
-        target_zones : set[int] – các Zone phải BẬT, phần còn lại sẽ TẮT.
-        """
-        for z in range(1, config.NUM_ZONES + 1):
-            want = z in target_zones
-            have = self._zone_states.get(z, False)
-            if want != have:
-                success = self.set_zone(z, want)
-                if not success and not self.is_connected():
-                    # Thử kết nối lại nếu mất kết nối
-                    if self.try_reconnect():
-                        self.set_zone(z, want)
-                    break   # Dừng sync, sẽ thử lại frame sau
-
     def ping(self) -> bool:
-        """Kiểm tra ESP32 còn phản hồi không. Trả về True = OK."""
-        resp = self._send("PING")
-        return resp == "PONG"
+        """Kiểm tra ESP32 còn phản hồi không."""
+        return self._send("PING") == "PONG"
 
-    def get_zone_states(self) -> dict:
-        """Trả về bản sao trạng thái relay hiện tại."""
-        return dict(self._zone_states)
-
-
-# ─── Telegram Alerter ─────────────────────────────────────────────────────────
-
-class TelegramAlerter:
-    """
-    Gửi thông báo qua Telegram Bot API.
-
-    Logic:
-    • Cảnh báo cháy thông thường: gửi khi phát hiện lần đầu,
-      sau đó mỗi ALERT_COOLDOWN giây nếu còn cháy.
-    • Cảnh báo khẩn cấp: gửi đúng 1 lần / sự kiện cháy.
-    • Thông báo đã dập tắt: gửi khi hệ thống trở về bình thường.
-
-    Tất cả lệnh gọi HTTP chạy trong thread riêng để không block vòng lặp.
-    """
-
-    def __init__(self):
-        self._last_normal_time: float = 0.0
-        self._emergency_sent:   bool  = False
-        self._fire_active:      bool  = False
-
-        if config.TELEGRAM_BOT_TOKEN == "YOUR_BOT_TOKEN_HERE":
-            logger.warning("[Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.")
-
-    # ── Internal ─────────────────────────────────────────────────────────────
-
-    def _is_configured(self) -> bool:
-        return (config.TELEGRAM_BOT_TOKEN not in ("YOUR_BOT_TOKEN_HERE", "")
-                and config.TELEGRAM_CHAT_ID not in ("YOUR_CHAT_ID_HERE", ""))
-
-    def _post_message(self, text: str) -> bool:
-        """Gửi tin nhắn đến Telegram (blocking). Gọi từ thread phụ."""
-        url = (f"https://api.telegram.org"
-               f"/bot{config.TELEGRAM_BOT_TOKEN}/sendMessage")
-        payload = {
-            "chat_id":    config.TELEGRAM_CHAT_ID,
-            "text":       text,
-            "parse_mode": "HTML",
+    def get_states(self) -> dict:
+        """Trả về bản sao trạng thái relay hiện tại (debug/log)."""
+        return {
+            "zone1_light": self._zone_light_state[1],
+            "zone2_light": self._zone_light_state[2],
+            "buzzer":      self._buzzer_state,
         }
-        try:
-            r = requests.post(url, json=payload, timeout=10)
-            if r.ok:
-                logger.info("[Telegram] Đã gửi thông báo.")
-                return True
-            else:
-                logger.error(f"[Telegram] HTTP {r.status_code}: {r.text[:120]}")
-                return False
-        except requests.RequestException as e:
-            logger.error(f"[Telegram] Lỗi kết nối: {e}")
-            return False
-
-    def _send_async(self, text: str):
-        """Gửi không đồng bộ để không chặn vòng lặp chính."""
-        if not self._is_configured():
-            return
-        t = threading.Thread(target=self._post_message, args=(text,), daemon=True)
-        t.start()
-
-    # ── Public API ───────────────────────────────────────────────────────────
-
-    def notify_fire(self, zones: set) -> None:
-        """
-        Gửi cảnh báo cháy thông thường.
-        Sẽ không gửi nếu chưa hết thời gian cooldown.
-        """
-        now = time.time()
-        if now - self._last_normal_time < config.TELEGRAM_ALERT_COOLDOWN_SEC:
-            return
-
-        zone_str = ", ".join(f"<b>Zone {z}</b>" for z in sorted(zones))
-        msg = (
-            "🔥 <b>PHÁT HIỆN CHÁY</b>\n"
-            f"📍 Vị trí: {zone_str}\n"
-            f"⏰ {_now_str()}\n"
-            "🚿 Hệ thống đã kích hoạt thiết bị chữa cháy tại khu vực tương ứng."
-        )
-        self._send_async(msg)
-        self._last_normal_time = now
-        self._fire_active = True
-
-    def notify_emergency(self, reason: str) -> None:
-        """
-        Gửi cảnh báo KHẨN CẤP.
-        Chỉ gửi đúng 1 lần trong suốt sự kiện cháy (tránh spam).
-        """
-        if self._emergency_sent:
-            return
-
-        msg = (
-            "🚨 <b>KHẨN CẤP – ĐÁM CHÁY LỚN</b>\n"
-            f"⚠️ Lý do: {reason}\n"
-            f"⏰ {_now_str()}\n"
-            "☎️ <b>Gọi ngay lực lượng PCCC: 114</b>"
-        )
-        self._send_async(msg)
-        self._emergency_sent = True
-
-    def notify_clear(self) -> None:
-        """Gửi thông báo đám cháy đã được dập tắt."""
-        if not self._fire_active:
-            return
-
-        msg = (
-            "✅ <b>Đám cháy đã được dập tắt</b>\n"
-            f"⏰ {_now_str()}\n"
-            "🟢 Hệ thống trở về trạng thái giám sát bình thường."
-        )
-        self._send_async(msg)
-        self._reset()
-
-    def _reset(self):
-        """Reset trạng thái sau khi đám cháy đã tắt."""
-        self._emergency_sent = False
-        self._fire_active    = False
-
-
-# ─── Helpers ──────────────────────────────────────────────────────────────────
-
-def _now_str() -> str:
-    """Chuỗi thời gian hiện tại dạng dd/mm/yyyy HH:MM:SS."""
-    return time.strftime("%d/%m/%Y %H:%M:%S")

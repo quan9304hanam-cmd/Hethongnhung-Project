@@ -1,0 +1,138 @@
+06:25:29 [INFO   ] ============================================================
+06:25:29 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+06:25:29 [INFO   ] ============================================================
+06:25:29 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:25:29 [CRITICAL] Không tìm thấy model: models/fire_smoke.pt
+  Hãy đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py
+06:26:19 [INFO   ] ============================================================
+06:26:19 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+06:26:19 [INFO   ] ============================================================
+06:26:19 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:26:19 [CRITICAL] Không tìm thấy model: models/fire_smoke.pt
+  Hãy đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py
+06:48:08 [INFO   ] ============================================================
+06:48:08 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+06:48:08 [INFO   ] ============================================================
+06:48:08 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:48:08 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+06:48:09 [WARNING] DroidCam WiFi thất bại, thử USB…
+06:48:09 [INFO   ] Độ phân giải camera: 1280×720
+06:48:09 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+06:48:14 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+06:48:14 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+06:48:14 [WARNING]   Kiểm tra cổng COM: COM3
+06:48:14 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+06:55:55 [INFO   ] ============================================================
+06:55:55 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+06:55:55 [INFO   ] ============================================================
+06:55:55 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:55:55 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+06:55:56 [WARNING] DroidCam WiFi thất bại, thử USB…
+06:55:56 [INFO   ] Độ phân giải camera: 1280×720
+06:55:56 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+06:56:01 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+06:56:01 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+06:56:01 [WARNING]   Kiểm tra cổng COM: COM3
+06:56:01 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+06:58:03 [INFO   ] ============================================================
+06:58:03 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+06:58:03 [INFO   ] ============================================================
+06:58:03 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:58:03 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+06:58:04 [WARNING] DroidCam WiFi thất bại, thử USB…
+06:58:04 [INFO   ] Độ phân giải camera: 1280×720
+06:58:04 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+06:58:10 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+06:58:10 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+06:58:10 [WARNING]   Kiểm tra cổng COM: COM3
+06:58:10 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+07:12:10 [INFO   ] ============================================================
+07:12:10 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+07:12:10 [INFO   ] ============================================================
+07:12:10 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+07:12:10 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+07:12:11 [WARNING] DroidCam WiFi thất bại, thử USB…
+07:12:11 [INFO   ] Độ phân giải camera: 1280×720
+07:12:11 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+07:12:16 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+07:12:16 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+07:12:16 [WARNING]   Kiểm tra cổng COM: COM3
+07:12:16 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+07:15:25 [INFO   ] ============================================================
+07:15:25 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+07:15:25 [INFO   ] ============================================================
+07:15:25 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+07:15:25 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+07:15:26 [WARNING] DroidCam WiFi thất bại, thử USB…
+07:15:26 [INFO   ] Độ phân giải camera: 1280×720
+07:15:26 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+07:15:31 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+07:15:31 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+07:15:31 [WARNING]   Kiểm tra cổng COM: COM3
+07:15:31 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+07:16:30 [INFO   ] ============================================================
+07:16:30 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+07:16:30 [INFO   ] ============================================================
+07:16:30 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+07:16:31 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+07:16:31 [WARNING] DroidCam WiFi thất bại, thử USB…
+07:16:31 [INFO   ] Độ phân giải camera: 1280×720
+07:16:31 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+07:16:37 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+07:16:37 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+07:16:37 [WARNING]   Kiểm tra cổng COM: COM3
+07:16:37 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+07:16:37 [INFO   ] Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.
+
+07:17:08 [WARNING] CHÁY – Zone: [2]
+07:17:11 [INFO   ] Đám cháy đã tắt – relay reset.
+07:17:32 [WARNING] CHÁY – Zone: [4]
+07:17:35 [INFO   ] Đám cháy đã tắt – relay reset.
+07:17:49 [WARNING] CHÁY – Zone: [4]
+07:17:49 [CRITICAL] KHẨN CẤP: Diện tích đám cháy 17% khung hình (ngưỡng: 15%)
+07:17:52 [INFO   ] Đám cháy đã tắt – relay reset.
+07:18:42 [INFO   ] Thoát theo yêu cầu.
+07:18:42 [INFO   ] Đang tắt hệ thống…
+07:18:42 [INFO   ] [ESP32] Đã ngắt kết nối.
+07:18:42 [INFO   ] Hệ thống đã tắt hoàn toàn.
+09:52:52 [INFO   ] ============================================================
+09:52:52 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+09:52:52 [INFO   ] ============================================================
+09:52:52 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+09:52:52 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+09:52:53 [WARNING] DroidCam WiFi thất bại, thử USB…
+09:52:53 [INFO   ] Độ phân giải camera: 1280×720
+09:52:54 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+09:52:59 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+09:52:59 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+09:52:59 [WARNING]   Kiểm tra cổng COM: COM3
+09:52:59 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+09:52:59 [INFO   ] Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.
+
+09:53:44 [INFO   ] Thoát theo yêu cầu.
+09:53:44 [INFO   ] Đang tắt hệ thống…
+09:53:44 [INFO   ] [ESP32] Đã ngắt kết nối.
+09:53:45 [INFO   ] Hệ thống đã tắt hoàn toàn.
+10:16:35 [INFO   ] ============================================================
+10:16:35 [INFO   ]   HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động
+10:16:35 [INFO   ] ============================================================
+10:16:35 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+10:16:35 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+10:16:36 [WARNING] DroidCam WiFi thất bại, thử USB…
+10:16:37 [INFO   ] Độ phân giải camera: 1280×720
+10:16:37 [INFO   ] Ma trận Perspective Transform đã sẵn sàng.
+10:16:42 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+10:16:42 [WARNING] ESP32 chưa kết nối – relay control bị vô hiệu hóa.
+10:16:42 [WARNING]   Kiểm tra cổng COM: COM3
+10:16:42 [WARNING] [Telegram] Token chưa được cấu hình – thông báo sẽ bị tắt.
+10:16:42 [INFO   ] Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.
+
+10:17:04 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+10:17:04 [WARNING] CHÁY – Zone: [2]
+10:17:04 [CRITICAL] KHẨN CẤP: Diện tích đám cháy 16% khung hình (ngưỡng: 15%)
+10:17:14 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+10:17:14 [INFO   ] Đám cháy đã tắt – relay reset.
+10:17:16 [INFO   ] Thoát theo yêu cầu.
+10:17:16 [INFO   ] Đang tắt hệ thống…
+10:17:16 [INFO   ] [ESP32] Đã ngắt kết nối.
+10:17:16 [INFO   ] Hệ thống đã tắt hoàn toàn.

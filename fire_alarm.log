@@ -1,0 +1,92 @@
+06:46:17 [INFO   ] ================================================================
+06:46:17 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+06:46:17 [INFO   ] ================================================================
+06:46:17 [INFO   ] Tải mô hình YOLOv8: models/fire.pt
+06:46:17 [CRITICAL] Không tìm thấy model: models/fire.pt
+  Đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py
+06:49:48 [INFO   ] ================================================================
+06:49:48 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+06:49:48 [INFO   ] ================================================================
+06:49:48 [INFO   ] Tải mô hình YOLOv8: models/fire.pt
+06:49:48 [CRITICAL] Không tìm thấy model: models/fire.pt
+  Đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py
+06:51:25 [INFO   ] ================================================================
+06:51:25 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+06:51:25 [INFO   ] ================================================================
+06:51:25 [INFO   ] Tải mô hình YOLOv8: models/fire.pt
+06:51:25 [CRITICAL] Không tìm thấy model: models/fire.pt
+  Đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py
+06:56:18 [INFO   ] ================================================================
+06:56:18 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+06:56:18 [INFO   ] ================================================================
+06:56:18 [INFO   ] Tải mô hình YOLOv8: models/fire.pt
+06:56:18 [CRITICAL] Không tìm thấy model: models/fire.pt
+  Đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py
+06:57:27 [INFO   ] ================================================================
+06:57:27 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+06:57:27 [INFO   ] ================================================================
+06:57:27 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:57:27 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+06:58:52 [WARNING] DroidCam WiFi thất bại, thử USB…
+06:58:52 [INFO   ] Camera 1 (PC) – Zone 1: OK
+06:58:52 [INFO   ] Camera 2 (DroidCam) – Zone 2: OK
+06:58:57 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+06:58:57 [WARNING] ESP32 chưa kết nối (cổng COM3) – relay bị vô hiệu hóa.
+06:59:20 [INFO   ] ================================================================
+06:59:20 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+06:59:20 [INFO   ] ================================================================
+06:59:20 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+06:59:20 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+07:00:44 [WARNING] DroidCam WiFi thất bại, thử USB…
+07:00:44 [INFO   ] Camera 1 (PC) – Zone 1: OK
+07:00:44 [INFO   ] Camera 2 (DroidCam) – Zone 2: OK
+07:00:49 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+07:00:49 [WARNING] ESP32 chưa kết nối (cổng COM3) – relay bị vô hiệu hóa.
+07:03:22 [INFO   ] ================================================================
+07:03:22 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+07:03:22 [INFO   ] ================================================================
+07:03:22 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+07:03:22 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+07:04:46 [WARNING] DroidCam WiFi thất bại, thử USB…
+07:04:46 [INFO   ] Camera 1 (PC) – Zone 1: OK
+07:04:46 [INFO   ] Camera 2 (DroidCam) – Zone 2: OK
+07:04:51 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+07:04:51 [WARNING] ESP32 chưa kết nối (cổng COM3) – relay bị vô hiệu hóa.
+07:04:51 [INFO   ] Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.
+
+07:06:18 [INFO   ] Thoát theo yêu cầu.
+07:06:18 [INFO   ] Đang tắt hệ thống…
+07:06:18 [INFO   ] [ESP32] Đã ngắt kết nối.
+07:06:19 [INFO   ] Hệ thống đã tắt hoàn toàn.
+09:23:36 [INFO   ] ================================================================
+09:23:36 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+09:23:36 [INFO   ] ================================================================
+09:23:36 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+09:23:37 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+09:25:02 [WARNING] DroidCam WiFi thất bại, thử USB…
+09:25:02 [INFO   ] Camera 1 (PC) – Zone 1: OK
+09:25:02 [INFO   ] Camera 2 (DroidCam) – Zone 2: OK
+09:25:02 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': FileNotFoundError(2, 'The system cannot find the file specified.', None, 2)
+09:25:02 [WARNING] ESP32 chưa kết nối (cổng COM3) – relay bị vô hiệu hóa.
+09:25:02 [INFO   ] Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.
+
+09:26:47 [INFO   ] Thoát theo yêu cầu.
+09:26:47 [INFO   ] Đang tắt hệ thống…
+09:26:47 [INFO   ] [ESP32] Đã ngắt kết nối.
+09:26:47 [INFO   ] Hệ thống đã tắt hoàn toàn.
+09:45:31 [INFO   ] ================================================================
+09:45:31 [INFO   ]   HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)
+09:45:31 [INFO   ] ================================================================
+09:45:31 [INFO   ] Tải mô hình YOLOv8: models/fire_smoke.pt
+09:45:31 [INFO   ] Model sẵn sàng. Classes: {0: 'fire'}
+09:45:43 [WARNING] DroidCam WiFi thất bại, thử USB…
+09:45:43 [INFO   ] Camera 1 (PC) – Zone 1: OK
+09:45:43 [INFO   ] Camera 2 (DroidCam) – Zone 2: OK
+09:45:49 [ERROR  ] [ESP32] Không thể mở cổng COM3: could not open port 'COM3': OSError(22, 'The semaphore timeout period has expired.', None, 121)
+09:45:49 [WARNING] ESP32 chưa kết nối (cổng COM3) – relay bị vô hiệu hóa.
+09:45:49 [INFO   ] Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.
+
+10:14:19 [INFO   ] Thoát theo yêu cầu.
+10:14:19 [INFO   ] Đang tắt hệ thống…
+10:14:19 [INFO   ] [ESP32] Đã ngắt kết nối.
+10:14:19 [INFO   ] Hệ thống đã tắt hoàn toàn.

@@ -1,112 +1,63 @@
 """
-config.py – Cấu hình trung tâm của hệ thống phát hiện cháy
-══════════════════════════════════════════════════════════
-Chỉnh sửa file này để thay đổi các tham số hệ thống.
-Các tọa độ hiệu chuẩn phối cảnh được đọc từ calibration.json
-(tạo bằng cách chạy: python calibrate.py)
+config.py – Cấu hình hệ thống báo cháy 2 Camera
+═══════════════════════════════════════════════
+  Zone 1 = Camera PC (webcam laptop/USB)
+  Zone 2 = Camera điện thoại (DroidCam)
+
+Không còn dùng Perspective Transform – mỗi camera TỰ LÀ một Zone,
+nên không cần calibrate.py / calibration.json như bản trước.
 """
 
-import json
-import os
+# ─── Camera Zone 1 – Camera PC ────────────────────────────────────────────────
+# Webcam tích hợp laptop thường là index 0. Nếu có nhiều camera, thử 1, 2…
+CAM1_SOURCE = 0
 
-# ─── Camera ──────────────────────────────────────────────────────────────────
+# ─── Camera Zone 2 – DroidCam (điện thoại) ────────────────────────────────────
+CAM2_MODE = "wifi"      # "wifi" hoặc "usb"
+
 # DroidCam WiFi: đổi IP thành IP điện thoại trong cùng mạng LAN
-DROIDCAM_WIFI_URL = "http://192.168.1.95:4747/video"
+DROIDCAM_WIFI_URL = "http://172.20.6.109:4747/video"
 
-# DroidCam USB: dùng index thiết bị (thường là 1 hoặc 2)
+# DroidCam USB: index thiết bị (thường là 1 hoặc 2, thử nếu sai)
 DROIDCAM_USB_INDEX = 1
 
-# Chọn chế độ: "wifi" hoặc "usb"
-CAMERA_MODE = "wifi"
+# ─── Độ phân giải mong muốn cho cả 2 camera ───────────────────────────────────
+CAMERA_WIDTH  = 640
+CAMERA_HEIGHT = 480
 
-# Độ phân giải mong muốn (None = dùng mặc định của camera)
-CAMERA_WIDTH  = 1280
-CAMERA_HEIGHT = 720
-
-# ─── YOLOv8 Model ────────────────────────────────────────────────────────────
+# ─── YOLOv8 Model ──────────────────────────────────────────────────────────────
 MODEL_PATH = "models/fire_smoke.pt"
 
-# Class IDs – điều chỉnh theo model bạn sử dụng
-CLASS_FIRE  = 0
-CLASS_SMOKE = 1
-CLASS_NAMES = {CLASS_FIRE: "Lửa", CLASS_SMOKE: "Khói"}
+# Class ID của "lửa" trong model – kiểm tra bằng model.names sau khi load
+CLASS_FIRE = 0
 
-# Ngưỡng confidence tối thiểu để chấp nhận kết quả phát hiện
-FIRE_CONF_THRESHOLD  = 0.50
-SMOKE_CONF_THRESHOLD = 0.45
+# Ngưỡng confidence tối thiểu để chấp nhận một detection là lửa thật
+FIRE_CONF_THRESHOLD = 0.50
 
-# ─── Perspective Transform ───────────────────────────────────────────────────
-CALIBRATION_FILE = "calibration.json"
+# ─── Ngưỡng phân loại kích thước lửa (theo % PIXEL khung hình bị che) ─────────
+#   ratio < 10%            → "nhỏ"
+#   10% <= ratio < 25%     → "vừa"
+#   ratio >= 25%           → "lớn"
+SMALL_FIRE_MAX_RATIO  = 0.10
+MEDIUM_FIRE_MAX_RATIO = 0.25
 
-# Kích thước ảnh bird's-eye (nhìn từ trên xuống) sau khi nắn thẳng
-WARP_WIDTH  = 640
-WARP_HEIGHT = 640
-
-# Tọa độ mặc định dùng khi chưa có file calibration.json
-# Thứ tự: [trên-trái, trên-phải, dưới-phải, dưới-trái] trong ảnh camera gốc
-DEFAULT_SRC_POINTS = [
-    [120,  60],
-    [520,  60],
-    [590, 410],
-    [50,  410],
-]
-
-
-def load_calibration() -> list:
-    """
-    Đọc tọa độ 4 điểm từ calibration.json.
-    Trả về DEFAULT_SRC_POINTS nếu file chưa tồn tại.
-    """
-    if os.path.exists(CALIBRATION_FILE):
-        try:
-            with open(CALIBRATION_FILE, "r") as f:
-                data = json.load(f)
-            pts = data.get("src_points")
-            if pts and len(pts) == 4:
-                print(f"[Config] Đã tải calibration từ {CALIBRATION_FILE}")
-                return pts
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"[Config] Lỗi đọc calibration: {e} – dùng mặc định.")
-    else:
-        print(f"[Config] Chưa có {CALIBRATION_FILE}. Chạy calibrate.py trước!")
-    return DEFAULT_SRC_POINTS
-
-
-# ─── Zone Layout ─────────────────────────────────────────────────────────────
-NUM_ZONES = 4
-# Bố cục 2×2 trên ảnh bird's-eye:
-#   Zone 1 (trên-trái)  │  Zone 2 (trên-phải)
-#  ─────────────────────┼──────────────────────
-#   Zone 3 (dưới-trái)  │  Zone 4 (dưới-phải)
-
-
-# ─── ESP32 Serial ────────────────────────────────────────────────────────────
-# Windows: "COM3", "COM4", …
-# Linux/macOS: "/dev/ttyUSB0", "/dev/ttyACM0", …
-ESP32_PORT      = "COM3"
-ESP32_BAUD_RATE = 115200
-ESP32_TIMEOUT   = 1.0   # giây – timeout khi đọc phản hồi
-
-
-# ─── Ngưỡng cảnh báo ─────────────────────────────────────────────────────────
-# Tỷ lệ diện tích bbox / tổng khung hình → kích hoạt KHẨN CẤP
-FIRE_AREA_EMERGENCY_RATIO  = 0.15   # 15% → lửa quá lớn
-SMOKE_AREA_EMERGENCY_RATIO = 0.40   # 40% → khói che khuất camera
-
-# Số frame liên tiếp KHÔNG phát hiện lửa trước khi tắt relay của Zone đó
-CLEAR_CONFIRMATION_FRAMES = 30      # ≈ 1 giây ở 30fps
-
-# Số frame phát hiện liên tiếp trước khi kích hoạt relay (lọc false positive)
+# ─── Debounce kích hoạt & độ trễ tắt ──────────────────────────────────────────
+# Số frame liên tiếp PHẢI thấy lửa mới được tính là "có cháy" (chống false positive)
 ACTIVATE_CONFIRMATION_FRAMES = 3
 
+# Số giây sau khi KHÔNG còn thấy lửa mới tắt đèn + chuông của Zone đó
+# (đúng yêu cầu: "sau khi lửa tắt 5 giây tắt đèn, tắt chuông báo")
+OFF_DELAY_SECONDS = 5.0
 
-# ─── Telegram ────────────────────────────────────────────────────────────────
-TELEGRAM_BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
-TELEGRAM_CHAT_ID   = "YOUR_CHAT_ID_HERE"
+# Khoảng cách tối thiểu (giây) giữa 2 lần in lại CÙNG MỘT mức cảnh báo
+# (tránh terminal bị spam khi lửa cháy liên tục nhiều giây)
+PRINT_COOLDOWN_SEC = 2.0
 
-# Thời gian chờ tối thiểu (giây) giữa 2 lần gửi cảnh báo thông thường
-TELEGRAM_ALERT_COOLDOWN_SEC = 30
+# ─── ESP32 Serial ──────────────────────────────────────────────────────────────
+# Windows: "COM3", "COM4", …      Linux/macOS: "/dev/ttyUSB0", "/dev/ttyACM0"
+ESP32_PORT      = "COM3"
+ESP32_BAUD_RATE = 115200
+ESP32_TIMEOUT   = 1.0
 
-
-# ─── Logging ─────────────────────────────────────────────────────────────────
-LOG_FILE = "logs/fire_system.log"
+# ─── Logging ────────────────────────────────────────────────────────────────────
+LOG_FILE = "logs/fire_alarm.log"

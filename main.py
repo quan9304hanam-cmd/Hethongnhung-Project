@@ -1,22 +1,20 @@
 """
-main.py – Luồng chính của Hệ thống Phát hiện Cháy
-══════════════════════════════════════════════════
+main.py – Luồng chính: Hệ thống báo cháy 2 Camera (Zone 1 = PC, Zone 2 = DroidCam)
+══════════════════════════════════════════════════════════════════════════════════
 
-Quy trình mỗi frame:
-  1. Đọc frame từ DroidCam
-  2. Chạy YOLOv8 → danh sách detection (lửa / khói)
-  3. Biến đổi tọa độ tâm lửa → bird's-eye → xác định Zone
-  4. Kiểm tra ngưỡng khẩn cấp (diện tích quá lớn / khói dày)
-  5. Cập nhật bộ đếm persistence (tránh false positive / jitter)
-  6. Đồng bộ relay ESP32 theo Zone đang bật
-  7. Gửi cảnh báo Telegram (nếu cần)
-  8. Hiển thị: frame gốc có bbox | ảnh bird's-eye có lưới Zone
+Quy trình mỗi vòng lặp:
+  1. Đọc frame từ Camera 1 (PC) và Camera 2 (DroidCam)
+  2. Chạy YOLOv8 (batch cả 2 frame trong 1 lần inference cho nhanh)
+  3. Với mỗi Zone: tính % pixel bị lửa che → phân loại nhỏ/vừa/lớn
+  4. In cảnh báo màu lên terminal theo đúng mức độ
+  5. Cập nhật state máy trạng thái từng Zone (debounce BẬT, độ trễ 5s TẮT)
+  6. Đồng bộ lệnh xuống ESP32: đèn Zone 1 (chân X), đèn Zone 2 (chân Y), chuông
+  7. Hiển thị 2 khung hình camera kèm bounding box + thanh trạng thái
 
 Phím tắt trong cửa sổ hiển thị:
   [Q] – Thoát
-  [S] – Chụp màn hình và lưu vào logs/
-  [T] – Gửi thử thông báo Telegram
-  [A] – Tắt tất cả relay ngay lập tức
+  [S] – Chụp ảnh cả 2 khung, lưu vào logs/
+  [A] – Tắt tất cả relay ngay lập tức (test khẩn cấp)
 """
 
 import cv2
@@ -26,14 +24,16 @@ import logging
 import logging.handlers
 import sys
 import os
-from collections import defaultdict
 from datetime import datetime
 
 from ultralytics import YOLO
+from colorama import init as colorama_init, Fore, Style
 
 import config
 import vision_utils
-from communication import ESP32Controller, TelegramAlerter
+from communication import ESP32Controller
+
+colorama_init(autoreset=True)
 
 
 # ─── Logging setup ────────────────────────────────────────────────────────────
@@ -45,12 +45,10 @@ def setup_logging():
     root = logging.getLogger()
     root.setLevel(logging.INFO)
 
-    # Console
     ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(fmt)
     root.addHandler(ch)
 
-    # File (rotating 5MB × 3)
     fh = logging.handlers.RotatingFileHandler(
         config.LOG_FILE, maxBytes=5 * 1024 * 1024, backupCount=3,
         encoding="utf-8"
@@ -59,84 +57,148 @@ def setup_logging():
     root.addHandler(fh)
 
 
-# ─── Camera helper ────────────────────────────────────────────────────────────
+# ─── In cảnh báo màu lên terminal ─────────────────────────────────────────────
 
-def open_camera():
-    """Mở DroidCam (WiFi hoặc USB). Trả về VideoCapture hoặc None."""
-    logger = logging.getLogger(__name__)
+_SIZE_COLOR = {
+    "nho": Fore.GREEN,
+    "vua": Fore.YELLOW,
+    "lon": Fore.RED + Style.BRIGHT,
+}
 
-    if config.CAMERA_MODE == "wifi":
-        cap = cv2.VideoCapture(config.DROIDCAM_WIFI_URL)
-        if cap.isOpened():
-            logger.info(f"Camera: DroidCam WiFi {config.DROIDCAM_WIFI_URL}")
-        else:
-            logger.warning("DroidCam WiFi thất bại, thử USB…")
-            cap = cv2.VideoCapture(config.DROIDCAM_USB_INDEX)
-    else:
-        cap = cv2.VideoCapture(config.DROIDCAM_USB_INDEX)
 
-    if not cap.isOpened():
-        logger.critical("Không tìm thấy camera!")
-        return None
+def print_fire_alert(zone_id: int, size_label: str, ratio: float):
+    """
+    In cảnh báo đúng định dạng yêu cầu: "lửa <nhỏ/vừa/lớn> ở zone <x>"
+    kèm thêm thời gian và % pixel để dễ theo dõi.
+    """
+    size_vi = vision_utils.SIZE_LABEL_VI[size_label]
+    color   = _SIZE_COLOR[size_label]
+    ts      = time.strftime("%H:%M:%S")
+    msg     = f"lửa {size_vi} ở zone {zone_id}"
+    print(f"{color}[{ts}] 🔥 {msg}  (chiếm {ratio*100:.1f}% khung hình){Style.RESET_ALL}")
 
-    # Thiết lập độ phân giải
+
+def print_zone_activated(zone_id: int):
+    print(f"{Fore.RED}{Style.BRIGHT}[{time.strftime('%H:%M:%S')}] "
+          f"🚨 KÍCH HOẠT báo động Zone {zone_id} – Bật đèn + chuông!{Style.RESET_ALL}")
+
+
+def print_zone_deactivated(zone_id: int):
+    print(f"{Fore.GREEN}[{time.strftime('%H:%M:%S')}] "
+          f"✅ Zone {zone_id}: hết lửa quá 5 giây – Tắt đèn.{Style.RESET_ALL}")
+
+
+# ─── Camera helpers ───────────────────────────────────────────────────────────
+
+def open_camera1():
+    """Mở Camera 1 – Webcam PC."""
+    cap = cv2.VideoCapture(config.CAM1_SOURCE)
     if config.CAMERA_WIDTH:
         cap.set(cv2.CAP_PROP_FRAME_WIDTH,  config.CAMERA_WIDTH)
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
-
-    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    logger.info(f"Độ phân giải camera: {w}×{h}")
-    return cap
+    return cap if cap.isOpened() else None
 
 
-# ─── State machine ────────────────────────────────────────────────────────────
+def open_camera2():
+    """Mở Camera 2 – DroidCam (WiFi ưu tiên, fallback USB)."""
+    if config.CAM2_MODE == "wifi":
+        cap = cv2.VideoCapture(config.DROIDCAM_WIFI_URL)
+        if cap.isOpened():
+            return cap
+        logging.getLogger(__name__).warning("DroidCam WiFi thất bại, thử USB…")
 
-class ZoneStateManager:
+    cap = cv2.VideoCapture(config.DROIDCAM_USB_INDEX)
+    if config.CAMERA_WIDTH:
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,  config.CAMERA_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, config.CAMERA_HEIGHT)
+    return cap if cap.isOpened() else None
+
+
+def safe_read(cap):
+    """Đọc 1 frame an toàn. Trả về None nếu lỗi hoặc cap đã đóng."""
+    if cap is None or not cap.isOpened():
+        return None
+    ret, frame = cap.read()
+    return frame if ret else None
+
+
+# ─── State machine cho từng Zone ──────────────────────────────────────────────
+
+class ZoneAlarmState:
     """
-    Quản lý trạng thái từng Zone theo cơ chế persistence:
-      • Cần ACTIVATE_FRAMES frame phát hiện liên tiếp → BẬT relay
-      • Cần CLEAR_FRAMES frame không phát hiện liên tiếp → TẮT relay
-    Loại bỏ false positive và jitter của YOLO.
+    Quản lý trạng thái BẬT/TẮT của 1 Zone với:
+      • Debounce BẬT: cần ACTIVATE_CONFIRMATION_FRAMES frame liên tiếp có lửa
+      • Độ trễ TẮT  : chờ OFF_DELAY_SECONDS giây sau khi KHÔNG còn thấy lửa
     """
 
-    ACTIVATE_FRAMES = config.ACTIVATE_CONFIRMATION_FRAMES
-    CLEAR_FRAMES    = config.CLEAR_CONFIRMATION_FRAMES
+    def __init__(self, zone_id: int):
+        self.zone_id = zone_id
+        self.active  = False          # Đèn/chuông của Zone này đang BẬT?
+        self._frames_seen   = 0
+        self._last_seen_time = 0.0
+        self._last_print_time = 0.0
+        self._last_size_label = None
 
-    def __init__(self):
-        # Bộ đếm frame khi có lửa (reset về 0 khi không phát hiện)
-        self._fire_run:  dict[int, int] = defaultdict(int)
-        # Bộ đếm frame khi không có lửa (reset về 0 khi phát hiện)
-        self._clear_run: dict[int, int] = defaultdict(int)
-        # Các Zone đang BẬT relay
-        self.active: set = set()
-
-    def update(self, detected_zones: set) -> tuple[set, set]:
+    def update(self, fire_present: bool, ratio: float, size_label, now: float):
         """
-        Cập nhật state với tập Zone vừa phát hiện lửa trong frame này.
-
-        Trả về:
-            newly_activated : Zone vừa bật
-            newly_cleared   : Zone vừa tắt
+        Cập nhật trạng thái dựa trên kết quả phát hiện frame hiện tại.
+        Trả về (newly_activated: bool, newly_deactivated: bool)
         """
-        newly_activated: set = set()
-        newly_cleared:   set = set()
+        newly_on  = False
+        newly_off = False
 
-        for z in range(1, config.NUM_ZONES + 1):
-            if z in detected_zones:
-                self._fire_run[z]  += 1
-                self._clear_run[z]  = 0
-                if z not in self.active and self._fire_run[z] >= self.ACTIVATE_FRAMES:
-                    self.active.add(z)
-                    newly_activated.add(z)
-            else:
-                self._fire_run[z]   = 0
-                self._clear_run[z] += 1
-                if z in self.active and self._clear_run[z] >= self.CLEAR_FRAMES:
-                    self.active.discard(z)
-                    newly_cleared.add(z)
+        if fire_present:
+            self._frames_seen += 1
+            self._last_seen_time = now
 
-        return newly_activated, newly_cleared
+            if not self.active and self._frames_seen >= config.ACTIVATE_CONFIRMATION_FRAMES:
+                self.active = True
+                newly_on = True
+        else:
+            self._frames_seen = 0
+            if self.active and (now - self._last_seen_time) >= config.OFF_DELAY_SECONDS:
+                self.active = False
+                newly_off = True
+
+        # In cảnh báo kích thước lửa lên terminal (có cooldown chống spam)
+        if fire_present and size_label:
+            changed     = size_label != self._last_size_label
+            cooldown_ok = (now - self._last_print_time) >= config.PRINT_COOLDOWN_SEC
+            if changed or cooldown_ok:
+                print_fire_alert(self.zone_id, size_label, ratio)
+                self._last_print_time = now
+            self._last_size_label = size_label
+        else:
+            self._last_size_label = None
+
+        return newly_on, newly_off
+
+
+# ─── Xử lý detections của 1 Zone ──────────────────────────────────────────────
+
+def process_zone_results(results, frame_w: int, frame_h: int) -> tuple[list, float, str | None]:
+    """
+    Trích xuất detection lửa từ kết quả YOLO, tính tỷ lệ pixel và phân loại.
+
+    Trả về (detections, ratio, size_label)
+    """
+    detections   = []
+    fire_bboxes  = []
+
+    for box in results.boxes:
+        cls_id = int(box.cls[0])
+        conf   = float(box.conf[0])
+
+        if cls_id != config.CLASS_FIRE or conf < config.FIRE_CONF_THRESHOLD:
+            continue
+
+        xyxy = box.xyxy[0].tolist()
+        detections.append({"bbox": xyxy, "conf": conf})
+        fire_bboxes.append(xyxy)
+
+    ratio      = vision_utils.compute_fire_pixel_ratio(fire_bboxes, frame_w, frame_h)
+    size_label = vision_utils.classify_fire_size(ratio)
+    return detections, ratio, size_label
 
 
 # ─── Main loop ────────────────────────────────────────────────────────────────
@@ -145,16 +207,16 @@ def main():
     setup_logging()
     logger = logging.getLogger(__name__)
 
-    logger.info("=" * 60)
-    logger.info("  HỆ THỐNG PHÁT HIỆN CHÁY – Khởi động")
-    logger.info("=" * 60)
+    logger.info("=" * 64)
+    logger.info("  HỆ THỐNG BÁO CHÁY 2 CAMERA – Zone 1 (PC) / Zone 2 (DroidCam)")
+    logger.info("=" * 64)
 
     # ── Load model ────────────────────────────────────────────────────────
     logger.info(f"Tải mô hình YOLOv8: {config.MODEL_PATH}")
     if not os.path.exists(config.MODEL_PATH):
         logger.critical(
             f"Không tìm thấy model: {config.MODEL_PATH}\n"
-            "  Hãy đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py"
+            "  Đặt file .pt vào thư mục models/ và cập nhật MODEL_PATH trong config.py"
         )
         sys.exit(1)
     try:
@@ -164,187 +226,120 @@ def main():
         logger.critical(f"Lỗi tải model: {e}")
         sys.exit(1)
 
-    # ── Camera ────────────────────────────────────────────────────────────
-    cap = open_camera()
-    if cap is None:
+    # ── Cameras ───────────────────────────────────────────────────────────
+    cap1 = open_camera1()
+    cap2 = open_camera2()
+
+    if cap1 is None:
+        logger.error("Không mở được Camera 1 (PC) – Zone 1 sẽ hiển thị OFFLINE.")
+    else:
+        logger.info("Camera 1 (PC) – Zone 1: OK")
+
+    if cap2 is None:
+        logger.error("Không mở được Camera 2 (DroidCam) – Zone 2 sẽ hiển thị OFFLINE.")
+    else:
+        logger.info("Camera 2 (DroidCam) – Zone 2: OK")
+
+    if cap1 is None and cap2 is None:
+        logger.critical("Cả 2 camera đều không mở được. Dừng chương trình.")
         sys.exit(1)
 
-    frame_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    # ── Perspective transform ─────────────────────────────────────────────
-    src_points = config.load_calibration()
-    M, M_inv   = vision_utils.compute_perspective_matrix(src_points)
-    logger.info("Ma trận Perspective Transform đã sẵn sàng.")
+    frame_w, frame_h = config.CAMERA_WIDTH, config.CAMERA_HEIGHT
 
     # ── ESP32 ─────────────────────────────────────────────────────────────
     esp = ESP32Controller()
     esp_ok = esp.connect()
     if not esp_ok:
-        logger.warning("ESP32 chưa kết nối – relay control bị vô hiệu hóa.")
-        logger.warning(f"  Kiểm tra cổng COM: {config.ESP32_PORT}")
-
-    # ── Telegram ──────────────────────────────────────────────────────────
-    alerter = TelegramAlerter()
+        logger.warning(f"ESP32 chưa kết nối (cổng {config.ESP32_PORT}) – relay bị vô hiệu hóa.")
 
     # ── State ─────────────────────────────────────────────────────────────
-    zone_mgr      = ZoneStateManager()
-    fire_active   = False          # True khi đang có ít nhất 1 Zone bật
-    emergency     = False          # True khi đã gửi cảnh báo khẩn cấp
-    prev_active   : set = set()
+    zone1 = ZoneAlarmState(1)
+    zone2 = ZoneAlarmState(2)
 
-    # FPS counter
-    fps_counter   = 0
-    fps_timer     = time.time()
-    fps           = 0.0
+    fps_counter, fps_timer, fps = 0, time.time(), 0.0
 
-    WIN = "Fire Detection System  |  [Q] Thoat  [S] Chup anh  [T] Test Telegram  [A] All OFF"
+    WIN = "He thong bao chay 2 Camera  |  [Q] Thoat  [S] Chup anh  [A] Tat tat ca"
     cv2.namedWindow(WIN, cv2.WINDOW_NORMAL)
 
     logger.info("Hệ thống đang chạy. Nhấn [Q] trong cửa sổ để thoát.\n")
 
     while True:
-        # ── Đọc frame ───────────────────────────────────────────────────
-        ret, frame = cap.read()
-        if not ret:
-            logger.warning("Không đọc được frame – thử lại…")
-            time.sleep(0.05)
-            continue
-
-        # ── FPS ─────────────────────────────────────────────────────────
-        fps_counter += 1
         now = time.time()
+
+        # ── Đọc frame từ 2 camera ───────────────────────────────────────
+        frame1 = safe_read(cap1)
+        frame2 = safe_read(cap2)
+
+        # FPS
+        fps_counter += 1
         if now - fps_timer >= 1.0:
             fps = fps_counter / (now - fps_timer)
-            fps_counter = 0
-            fps_timer   = now
+            fps_counter, fps_timer = 0, now
 
-        # ── YOLO inference ───────────────────────────────────────────────
-        results = model(frame, verbose=False)[0]
+        # ── YOLO inference (batch 2 frame hợp lệ trong 1 lần forward) ─────
+        batch, batch_zone_ids = [], []
+        if frame1 is not None:
+            batch.append(frame1); batch_zone_ids.append(1)
+        if frame2 is not None:
+            batch.append(frame2); batch_zone_ids.append(2)
 
-        # ── Parse detections ─────────────────────────────────────────────
-        detections: list[dict] = []
-        detected_fire_zones: set = set()
-        emergency_reason: str | None = None
+        results_map = {}
+        if batch:
+            results_list = model(batch, verbose=False)
+            results_map = dict(zip(batch_zone_ids, results_list))
 
-        for box in results.boxes:
-            cls_id = int(box.cls[0])
-            conf   = float(box.conf[0])
-            xyxy   = box.xyxy[0].tolist()   # [x1, y1, x2, y2]
-            x1, y1, x2, y2 = xyxy
+        # ── Xử lý Zone 1 ───────────────────────────────────────────────────
+        if frame1 is not None and 1 in results_map:
+            det1, ratio1, size1 = process_zone_results(results_map[1], frame_w, frame_h)
+            fire1 = size1 is not None
+        else:
+            det1, ratio1, size1, fire1 = [], 0.0, None, False
 
-            # Lọc theo threshold
-            if cls_id == config.CLASS_FIRE and conf < config.FIRE_CONF_THRESHOLD:
-                continue
-            if cls_id == config.CLASS_SMOKE and conf < config.SMOKE_CONF_THRESHOLD:
-                continue
+        # ── Xử lý Zone 2 ───────────────────────────────────────────────────
+        if frame2 is not None and 2 in results_map:
+            det2, ratio2, size2 = process_zone_results(results_map[2], frame_w, frame_h)
+            fire2 = size2 is not None
+        else:
+            det2, ratio2, size2, fire2 = [], 0.0, None, False
 
-            area_ratio = vision_utils.bbox_area_ratio(
-                x1, y1, x2, y2, frame_w, frame_h
-            )
+        # ── Cập nhật state machine từng Zone ─────────────────────────────
+        z1_on, z1_off = zone1.update(fire1, ratio1, size1, now)
+        z2_on, z2_off = zone2.update(fire2, ratio2, size2, now)
 
-            zone = None
+        if z1_on:  print_zone_activated(1)
+        if z2_on:  print_zone_activated(2)
+        if z1_off: print_zone_deactivated(1)
+        if z2_off: print_zone_deactivated(2)
 
-            # ── Lửa: xác định Zone qua perspective transform ──────────
-            if cls_id == config.CLASS_FIRE:
-                cx = (x1 + x2) / 2.0
-                cy = (y1 + y2) / 2.0
-                wx, wy = vision_utils.transform_point((cx, cy), M)
-                wx, wy = vision_utils.clamp_to_warp(wx, wy)
-                zone = vision_utils.get_zone(wx, wy)
-                detected_fire_zones.add(zone)
-
-                # Kiểm tra ngưỡng khẩn cấp – diện tích
-                if area_ratio >= config.FIRE_AREA_EMERGENCY_RATIO:
-                    emergency_reason = (
-                        f"Diện tích đám cháy {area_ratio:.0%} khung hình "
-                        f"(ngưỡng: {config.FIRE_AREA_EMERGENCY_RATIO:.0%})"
-                    )
-
-            # ── Khói: kiểm tra che khuất camera ──────────────────────
-            elif cls_id == config.CLASS_SMOKE:
-                if area_ratio >= config.SMOKE_AREA_EMERGENCY_RATIO:
-                    emergency_reason = (
-                        f"Khói dày đặc che khuất {area_ratio:.0%} khung hình "
-                        f"(ngưỡng: {config.SMOKE_AREA_EMERGENCY_RATIO:.0%})"
-                    )
-
-            detections.append({
-                "cls":   cls_id,
-                "conf":  conf,
-                "bbox":  xyxy,
-                "label": config.CLASS_NAMES.get(cls_id, str(cls_id)),
-                "zone":  zone,
-                "area":  area_ratio,
-                # Lưu tọa độ bird's-eye của lửa để vẽ lên warped map
-                "warp_pt": (wx, wy) if cls_id == config.CLASS_FIRE else None,
-            })
-
-        # ── Cập nhật Zone state ──────────────────────────────────────────
-        newly_on, newly_off = zone_mgr.update(detected_fire_zones)
-
-        # ── Đồng bộ relay ESP32 ──────────────────────────────────────────
+        # ── Đồng bộ relay ESP32 ───────────────────────────────────────────
+        buzzer_on = zone1.active or zone2.active
         if esp.is_connected():
-            esp.sync_zones(zone_mgr.active)
+            esp.sync(zone1.active, zone2.active, buzzer_on)
         elif esp_ok:
-            # Đánh dấu mất kết nối
             esp_ok = False
             logger.error("[ESP32] Mất kết nối!")
 
-        # ── Telegram alerts ──────────────────────────────────────────────
-        if zone_mgr.active:
-            if not fire_active:
-                # Lần đầu phát hiện lửa
-                alerter.notify_fire(zone_mgr.active)
-                fire_active = True
-                logger.warning(f"CHÁY – Zone: {sorted(zone_mgr.active)}")
-            elif newly_on:
-                # Lan sang Zone mới
-                alerter.notify_fire(zone_mgr.active)
-                logger.warning(f"CHÁY LAN – Zone mới: {sorted(newly_on)}")
-
-            if emergency_reason and not emergency:
-                alerter.notify_emergency(emergency_reason)
-                emergency = True
-                logger.critical(f"KHẨN CẤP: {emergency_reason}")
-
+        # ── Hiển thị ──────────────────────────────────────────────────────
+        if frame1 is not None:
+            vis1 = vision_utils.draw_detections_on_frame(frame1, det1, size1)
         else:
-            if fire_active:
-                alerter.notify_clear()
-                fire_active = False
-                emergency   = False
-                logger.info("Đám cháy đã tắt – relay reset.")
+            vis1 = vision_utils.make_offline_frame(frame_w, frame_h, "Zone 1 (PC)")
+        vis1 = vision_utils.draw_zone_status_bar(vis1, "Zone 1 (PC)", zone1.active, ratio1, size1, fps)
 
-        prev_active = zone_mgr.active.copy()
+        if frame2 is not None:
+            vis2 = vision_utils.draw_detections_on_frame(frame2, det2, size2)
+        else:
+            vis2 = vision_utils.make_offline_frame(frame_w, frame_h, "Zone 2 (DroidCam)")
+        vis2 = vision_utils.draw_zone_status_bar(vis2, "Zone 2 (DroidCam)", zone2.active, ratio2, size2, fps)
 
-        # ── Visualisation ─────────────────────────────────────────────────
+        # Resize đồng nhất chiều cao rồi ghép ngang
+        h = max(vis1.shape[0], vis2.shape[0])
+        if vis1.shape[0] != h:
+            vis1 = cv2.resize(vis1, (int(vis1.shape[1] * h / vis1.shape[0]), h))
+        if vis2.shape[0] != h:
+            vis2 = cv2.resize(vis2, (int(vis2.shape[1] * h / vis2.shape[0]), h))
 
-        # Khung trái: ảnh gốc + bbox
-        vis_orig = vision_utils.draw_detections_on_frame(frame, detections)
-        vis_orig = vision_utils.draw_status_bar(
-            vis_orig, zone_mgr.active, fps, emergency, esp.is_connected()
-        )
-
-        # Khung phải: bird's-eye view + lưới Zone
-        warped = vision_utils.warp_frame(frame, M)
-        fire_warp_pts = [
-            d["warp_pt"] for d in detections
-            if d["cls"] == config.CLASS_FIRE and d["warp_pt"] is not None
-        ]
-        vis_bev = vision_utils.draw_zone_grid(
-            warped, zone_mgr.active, fire_warp_pts
-        )
-
-        # Tiêu đề ảnh bird's-eye
-        cv2.putText(vis_bev, "Bird's-eye View", (8, 22),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1, cv2.LINE_AA)
-
-        # Ghép 2 ảnh cạnh nhau (resize bird's-eye về cùng chiều cao)
-        bev_target_h = vis_orig.shape[0]
-        bev_target_w = int(config.WARP_WIDTH * bev_target_h / config.WARP_HEIGHT)
-        vis_bev_rs   = cv2.resize(vis_bev, (bev_target_w, bev_target_h))
-        combined     = np.hstack([vis_orig, vis_bev_rs])
-
+        combined = np.hstack([vis1, vis2])
         cv2.imshow(WIN, combined)
 
         # ── Phím tắt ──────────────────────────────────────────────────────
@@ -360,22 +355,18 @@ def main():
             cv2.imwrite(path, combined)
             logger.info(f"Đã lưu ảnh: {path}")
 
-        elif key == ord('t'):
-            logger.info("Gửi thử Telegram…")
-            alerter.notify_fire({1})   # Gửi thử với Zone 1
-
         elif key == ord('a'):
             logger.warning("Yêu cầu tắt tất cả relay thủ công.")
             esp.all_off()
-            # Reset state
-            zone_mgr = ZoneStateManager()
-            fire_active = emergency = False
+            zone1 = ZoneAlarmState(1)
+            zone2 = ZoneAlarmState(2)
 
     # ── Cleanup ───────────────────────────────────────────────────────────────
     logger.info("Đang tắt hệ thống…")
     esp.all_off()
     esp.disconnect()
-    cap.release()
+    if cap1: cap1.release()
+    if cap2: cap2.release()
     cv2.destroyAllWindows()
     logger.info("Hệ thống đã tắt hoàn toàn.")
 
